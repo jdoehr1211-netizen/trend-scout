@@ -1,0 +1,106 @@
+# trend-scout
+
+Product trend collection, scoring, and recommendation pipeline for
+dropshipping research. Phase 1 (this repo state): compliant data
+collectors with rate limiting, retries, raw caching, quota guarding, and
+a common normalized schema.
+
+## Data sources (and why these)
+
+| Source | Access path | Signal |
+|---|---|---|
+| Google Trends | SerpApi (paid-capped free tier) | search interest over time + **by region** |
+| Reddit | official OAuth API, free tier | product mentions / upvote velocity in niche subreddits |
+| AliExpress | official Open Platform Affiliate API | hot-product rank, supplier price, sales volume |
+
+Deliberately **not** collected: Amazon Best Sellers and TikTok Creative
+Center scraping both violate ToS. Amazon signal is deferred to a Keepa
+API subscription if backtesting justifies it; TikTok signal is deferred
+to an Exploding Topics subscription (their API tier is the first paid
+upgrade worth making if recommendations feel late to trends).
+
+## Setup
+
+```powershell
+cd trend-scout
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e .
+copy .env.example .env   # then fill in keys — see comments in the file
+```
+
+Key registration:
+
+1. **SerpApi** — sign up at serpapi.com, copy the API key. Free tier = 100 searches/month.
+2. **Reddit** — reddit.com/prefs/apps → create app, type **script**. Use the
+   id under the app name as `REDDIT_CLIENT_ID`. Set a descriptive
+   `REDDIT_USER_AGENT` (Reddit requires the `platform:name:version (by /u/user)` format).
+3. **AliExpress** — register at openservice.aliexpress.com, create an app with
+   Affiliate API access, and get a tracking ID from the Portals dashboard.
+4. **Supabase** — create a project, run `sql/001_quota.sql` in the SQL editor.
+   Only the quota table is needed in Phase 1. Optional for laptop runs
+   (falls back to `data/quota.json`), **required** for GitHub Actions.
+
+## Running
+
+```powershell
+# see exactly which API calls would happen + current SerpApi quota state
+python -m trend_scout.runner --source all --dry-run
+
+python -m trend_scout.runner --source all                        # everything
+python -m trend_scout.runner --source reddit                     # one source
+python -m trend_scout.runner --source google_trends --mode regions
+```
+
+Outputs:
+
+- `data/raw/<source>/<date>/*.json` — every raw API response, cached before parsing
+- `data/normalized/<date>.jsonl` — normalized `TrendDatapoint` rows (Phase 2 moves these to Supabase)
+- `logs/trend_scout.log` — rotating log; collectors fail independently and never kill the run
+
+## The SerpApi budget guard
+
+Regional interest data is the core of the whole system and it's the one
+paid-capped source, so it is budget-guarded end to end:
+
+- every SerpApi call increments `api_quota` (Supabase, atomic) or `data/quota.json`
+- before a batch starts, the guard checks the **whole batch** fits under
+  `monthly_budget - budget_reserve` (100 − 10 by default) and refuses
+  up front rather than dying mid-cycle
+- CI runs hard-fail if Supabase creds are missing, because a per-run local
+  quota file would silently bypass the cap
+- `--dry-run` prints planned calls and current usage without spending anything
+
+Budget math for the default config lives in `config/settings.yaml`.
+
+## Scheduling
+
+GitHub Actions (`.github/workflows/collect.yml`): push this repo to
+GitHub, add the `.env` values as repo **Secrets**, and the cron schedule
+runs collectors at cadences tuned to the SerpApi budget (timeseries
+weekly, regions monthly, Reddit 6-hourly, AliExpress daily). Collected
+data is uploaded as run artifacts until Phase 2 lands Supabase storage.
+
+To run locally on a schedule instead, point Windows Task Scheduler at
+`.venv\Scripts\python.exe -m trend_scout.runner --source all`.
+
+## Adding a new data source
+
+1. Create `src/trend_scout/collectors/<name>.py`, subclass `BaseCollector`,
+   implement `collect()` (fetch only, no parsing) and `normalize()`
+   (raw → `TrendDatapoint` rows). Override `plan()` for `--dry-run` output.
+2. Register it in `collectors/__init__.py` (`SOURCES` + `build_collectors`).
+3. Add its section to `config/sources.yaml` and any keys to `.env.example`.
+4. If the API is paid or capped, wrap calls in a `QuotaGuard`.
+
+Metric names are free-form strings — no schema migration needed.
+
+## Roadmap
+
+- **Phase 2** — Supabase schema (keywords, trend_datapoints, regions,
+  recommendations, my_catalog), scoring engine (momentum, seasonality,
+  regional strength, saturation, composite 0–100), backtest harness.
+- **Phase 3** — Claude analysis agent, weekly digest, launched/winner/loser
+  feedback loop.
+- **Phase 4** — Streamlit dashboard (feed, region heatmaps, trend detail,
+  catalog early-warning).

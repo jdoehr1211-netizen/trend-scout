@@ -1,0 +1,31 @@
+google_trends:
+  enabled: true
+  backend: serpapi
+  # Hard monthly budget for SerpApi calls. The quota guard refuses to start
+  # a call once (used + reserve) would exceed budget.
+  monthly_budget: 100
+  budget_reserve: 10          # kept free for manual/debug calls
+  timeseries_window: "today 3-m"
+  rate_limit_per_min: 20
+  max_retries: 4
+
+reddit:
+  enabled: true
+  subreddits:
+    - shutupandtakemymoney
+    - BuyItForLife
+    - gadgets
+    - dropship
+    - Instagramreality      # dupes/virals surface here; low weight later
+  listings: [rising, top]   # top uses t=day
+  posts_per_listing: 100
+  rate_limit_per_min: 60    # free tier allows 100 QPM; stay under
+  max_retries: 4
+
+aliexpress:
+  enabled: true
+  target_currency: USD
+  target_language: EN
+  page_size: 50             # API max
+  rate_limit_per_min: 30
+  max_retries: 4

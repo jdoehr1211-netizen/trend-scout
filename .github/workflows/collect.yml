@@ -1,0 +1,74 @@
+name: collect
+
+on:
+  schedule:
+    # Cadences are tuned to the SerpApi free tier — see config/settings.yaml
+    # for the budget math before changing these.
+    - cron: "0 6 * * 1"     # google_trends timeseries — weekly, Mon 06:00 UTC
+    - cron: "0 7 1 * *"     # google_trends regions — monthly, 1st 07:00 UTC
+    - cron: "15 */6 * * *"  # reddit — every 6 hours
+    - cron: "45 5 * * *"    # aliexpress — daily
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source to run"
+        type: choice
+        options: [all, google_trends, reddit, aliexpress]
+        default: all
+      mode:
+        description: "google_trends mode"
+        type: choice
+        options: [timeseries, regions, both]
+        default: timeseries
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+
+      - name: Resolve source/mode for this trigger
+        id: sel
+        run: |
+          SOURCE="${{ github.event.inputs.source }}"
+          MODE="${{ github.event.inputs.mode }}"
+          case "${{ github.event.schedule }}" in
+            "0 6 * * 1")    SOURCE=google_trends; MODE=timeseries ;;
+            "0 7 1 * *")    SOURCE=google_trends; MODE=regions ;;
+            "15 */6 * * *") SOURCE=reddit ;;
+            "45 5 * * *")   SOURCE=aliexpress ;;
+          esac
+          echo "source=${SOURCE:-all}" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE:-timeseries}" >> "$GITHUB_OUTPUT"
+
+      - name: Run collectors
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+          ALIEXPRESS_APP_KEY: ${{ secrets.ALIEXPRESS_APP_KEY }}
+          ALIEXPRESS_APP_SECRET: ${{ secrets.ALIEXPRESS_APP_SECRET }}
+          ALIEXPRESS_TRACKING_ID: ${{ secrets.ALIEXPRESS_TRACKING_ID }}
+          # Required in CI: the quota guard refuses to run on Actions with a
+          # local quota file (it would reset every run and bypass the cap).
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: >
+          python -m trend_scout.runner
+          --source "${{ steps.sel.outputs.source }}"
+          --mode "${{ steps.sel.outputs.mode }}"
+
+      # Phase 1 stopgap: collected data survives as artifacts (90-day retention)
+      # until Phase 2 writes datapoints to Supabase directly.
+      - name: Upload collected data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ github.run_id }}
+          path: data/
+          if-no-files-found: ignore

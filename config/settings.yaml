@@ -1,0 +1,31 @@
+# Seed keywords: the candidate products the pipeline tracks.
+# Budget math for the SerpApi free tier (100 searches/month):
+#   timeseries: 1 call per keyword, weekly  -> 15 kw * ~4.3 weeks = ~65
+#   regions:    1 call per keyword, monthly -> 15 kw * 1          = ~15
+#   total ~80/month, leaving headroom under the 90 hard-stop
+# If you grow this list past ~18 keywords, lower the cadence or upgrade SerpApi.
+seed_keywords:
+  - mushroom lamp
+  - sunset projection lamp
+  - neck fan
+  - magnetic phone mount
+  - car trash can
+  - posture corrector
+  - electric spin scrubber
+  - mini thermal printer
+  - pet hair remover roller
+  - ice roller face
+  - heated eyelash curler
+  - cordless water flosser
+  - collapsible storage bins
+  - led strip lights
+  - portable blender
+
+# Regions you care about targeting ads in. Used to filter/rank
+# interest_by_region output; worldwide breakdown is always collected.
+target_geos: [US, CA, GB, AU, DE]
+
+# Collect US state-level breakdown (geo=US, one EXTRA SerpApi call per
+# keyword per region cycle). Doubles the monthly region spend — leave off
+# until the worldwide signal proves useful.
+us_state_breakdown: false
