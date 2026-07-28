@@ -45,7 +45,23 @@ jobs:
           echo "source=${SOURCE:-all}" >> "$GITHUB_OUTPUT"
           echo "mode=${MODE:-timeseries}" >> "$GITHUB_OUTPUT"
 
+      - name: Skip if this source's credentials aren't configured yet
+        id: creds
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          ALIEXPRESS_APP_KEY: ${{ secrets.ALIEXPRESS_APP_KEY }}
+        run: |
+          SOURCE="${{ steps.sel.outputs.source }}"
+          SKIP=false
+          if [ "$SOURCE" = "reddit" ] && [ -z "$REDDIT_CLIENT_ID" ]; then SKIP=true; fi
+          if [ "$SOURCE" = "aliexpress" ] && [ -z "$ALIEXPRESS_APP_KEY" ]; then SKIP=true; fi
+          if [ "$SKIP" = true ]; then
+            echo "::notice::$SOURCE credentials not configured yet (approval pending) — skipping run"
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+
       - name: Run collectors
+        if: steps.creds.outputs.skip != 'true'
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
