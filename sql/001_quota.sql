@@ -10,6 +10,11 @@ create table if not exists api_quota (
     primary key (source, month)
 );
 
+-- Lock the table down to the service key only. With RLS on and no policies,
+-- the public anon/authenticated Data API roles can't read or write anything;
+-- the pipeline's service_role key bypasses RLS.
+alter table api_quota enable row level security;
+
 -- Atomic increment used by the collector (avoids read-modify-write races
 -- if two runs ever overlap).
 create or replace function increment_quota(p_source text, p_month text, p_n integer)
