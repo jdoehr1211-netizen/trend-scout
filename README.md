@@ -127,9 +127,31 @@ Retention: `purge_expired_datapoints()` (in `002_phase2.sql`) deletes
 AliExpress-sourced rows older than 12 months, per the data-compliance
 attestation made during API registration.
 
+## Analysis agent (Phase 3)
+
+The agent pulls the top-scoring keywords, packages their trend evidence
+(scores, compact series, regional breakdown, and your feedback history) and
+asks Claude for a structured analysis per candidate: verdict
+(launch/watch/skip), demographics, ad regions, pricing estimates,
+competition, and fad-vs-durable risk. Results land in the
+`recommendations` table with full reasoning attached.
+
+```powershell
+python -m trend_scout.agent run       # analyze top candidates (1 API call)
+python -m trend_scout.agent digest    # top-10 digest -> data/digests/DATE.md
+python -m trend_scout.agent list      # recent recommendations with ids
+python -m trend_scout.agent feedback 12 winner --note "3x ROAS on FB"
+```
+
+The feedback loop is what makes it improve: marking recommendations
+launched/skipped/winner/loser feeds that history into every future prompt,
+so the agent learns which niches actually work for you. Model, top-N, and
+the monthly API-call budget are in `config/settings.yaml` → `agent` (calls
+are cost-guarded through the same `api_quota` ledger as SerpApi; a weekly
+run costs roughly $0.20-0.35). Requires `ANTHROPIC_API_KEY` in `.env` (and
+as a repo secret for the weekly CI run, which skips gracefully without it).
+
 ## Roadmap
 
-- **Phase 3** — Claude analysis agent, weekly digest, launched/winner/loser
-  feedback loop.
 - **Phase 4** — Streamlit dashboard (feed, region heatmaps, trend detail,
   catalog early-warning).

@@ -86,6 +86,23 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python -m trend_scout.score_cli score --save
 
+      - name: Analysis agent + weekly digest (after weekly timeseries scoring)
+        if: >
+          steps.creds.outputs.skip != 'true' &&
+          steps.sel.outputs.source == 'google_trends' &&
+          steps.sel.outputs.mode == 'timeseries'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY secret not configured — skipping analysis agent"
+          else
+            python -m trend_scout.agent run
+            python -m trend_scout.agent digest
+          fi
+
       # Datapoints now land in Supabase directly; the artifact remains as a
       # raw-response audit trail.
       - name: Upload collected data

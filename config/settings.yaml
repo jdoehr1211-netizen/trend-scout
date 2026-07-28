@@ -46,3 +46,15 @@ scoring:
   min_days: 30                 # series shorter than this -> low confidence
   max_zero_ratio: 0.4          # more zeros than this -> low confidence
   low_confidence_factor: 0.6   # composite multiplier for low-confidence series
+
+# Phase 3: the Claude analysis agent.
+agent:
+  model: claude-opus-4-8
+  top_n: 10                    # how many top-scoring keywords to analyze per run
+  # Cost guard, same pattern as the SerpApi budget: API *calls* per calendar
+  # month, tracked in the shared api_quota ledger. One weekly run = 1 call
+  # (~$0.35 at current Opus pricing); 20 leaves room for on-demand runs.
+  monthly_call_budget: 20
+  budget_reserve: 4
+  # How much history context goes into the prompt
+  feedback_history_limit: 30   # most recent feedback-marked recommendations
