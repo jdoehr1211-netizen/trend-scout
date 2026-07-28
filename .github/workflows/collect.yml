@@ -79,8 +79,15 @@ jobs:
           --source "${{ steps.sel.outputs.source }}"
           --mode "${{ steps.sel.outputs.mode }}"
 
-      # Phase 1 stopgap: collected data survives as artifacts (90-day retention)
-      # until Phase 2 writes datapoints to Supabase directly.
+      - name: Score keywords (after Google Trends collection)
+        if: steps.creds.outputs.skip != 'true' && steps.sel.outputs.source == 'google_trends'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python -m trend_scout.score_cli score --save
+
+      # Datapoints now land in Supabase directly; the artifact remains as a
+      # raw-response audit trail.
       - name: Upload collected data
         if: always()
         uses: actions/upload-artifact@v4

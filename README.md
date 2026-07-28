@@ -95,11 +95,40 @@ To run locally on a schedule instead, point Windows Task Scheduler at
 
 Metric names are free-form strings — no schema migration needed.
 
+## Scoring (Phase 2)
+
+Datapoints land in Supabase (`sql/002_phase2.sql`; JSONL stays as a local
+audit trail). The scoring engine computes a 0–100 opportunity score per
+keyword — the full formula and every component definition live in the
+docstring of `src/trend_scout/scoring.py`; the weights and thresholds are
+tunable in `config/settings.yaml` → `scoring`.
+
+```powershell
+python -m trend_scout.score_cli score                # rank all keywords now
+python -m trend_scout.score_cli score --save         # ...and store in Supabase
+python -m trend_scout.score_cli backtest --days-ago 30 60
+python -m trend_scout.score_cli import-jsonl data/normalized/*.jsonl
+```
+
+Components: **momentum** (tanh-squashed growth vs 7/30/90-day baselines),
+**regional strength** (share of `interest_by_region` mass inside your
+`target_geos`), **saturation** (distance past historical peak, staleness-
+weighted), **seasonality** (flag-only until a keyword has 400+ days of
+history), and a **confidence** gate that multiplies down sparse/zero-heavy
+series instead of hiding them. Weights renormalize over available
+components, so missing regional data never silently deflates a score.
+
+The backtest command truncates each series to a past date, scores it with
+only that data, and compares against the realized 30-day change — run it
+after tuning weights to check the changes actually help. CI re-scores
+weekly after each Google Trends collection.
+
+Retention: `purge_expired_datapoints()` (in `002_phase2.sql`) deletes
+AliExpress-sourced rows older than 12 months, per the data-compliance
+attestation made during API registration.
+
 ## Roadmap
 
-- **Phase 2** — Supabase schema (keywords, trend_datapoints, regions,
-  recommendations, my_catalog), scoring engine (momentum, seasonality,
-  regional strength, saturation, composite 0–100), backtest harness.
 - **Phase 3** — Claude analysis agent, weekly digest, launched/winner/loser
   feedback loop.
 - **Phase 4** — Streamlit dashboard (feed, region heatmaps, trend detail,

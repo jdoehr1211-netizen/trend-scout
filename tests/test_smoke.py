@@ -175,6 +175,82 @@ def test_aliexpress_normalize():
     assert price.meta["currency"] == "USD"
 
 
+def _series(days_values):
+    """Build a series ending today from a list of daily values."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    n = len(days_values)
+    return [(now - timedelta(days=n - 1 - i), float(v)) for i, v in enumerate(days_values)]
+
+
+def test_scoring_rising_beats_declining():
+    from datetime import datetime, timezone
+
+    from trend_scout.scoring import score_keyword
+
+    now = datetime.now(timezone.utc)
+    rising = _series([10 + i for i in range(90)])          # steady climb to 99
+    declining = _series([99 - i for i in range(90)])       # steady fall to 10
+    s_up = score_keyword("up", rising, None, ["US"], now)
+    s_down = score_keyword("down", declining, None, ["US"], now)
+    assert s_up.composite > s_down.composite
+    assert s_up.confidence == "normal"
+    assert s_up.components["momentum"]["score"] > 50
+    assert s_down.components["saturation"]["score"] > 50   # far past peak
+    assert s_up.components["seasonality"]["flag"] == "insufficient_history"
+
+
+def test_scoring_sparse_is_low_confidence():
+    from datetime import datetime, timezone
+
+    from trend_scout.scoring import score_keyword
+
+    now = datetime.now(timezone.utc)
+    sparse = _series([0, 0, 0, 5, 0, 0, 0, 0, 6, 0] * 9)
+    sc = score_keyword("sparse", sparse, None, ["US"], now)
+    assert sc.confidence == "low"
+
+    solid = _series([50] * 90)
+    sc2 = score_keyword("solid", solid, None, ["US"], now)
+    assert sc2.confidence == "normal"
+
+
+def test_scoring_regional_share():
+    from datetime import datetime, timezone
+
+    from trend_scout.scoring import regional, score_keyword
+
+    reg = regional({"US": 60, "GB": 20, "PH": 20}, ["US", "GB"])
+    assert reg["score"] == 80.0
+    assert reg["top_regions"][0]["region"] == "US"
+
+    # US state codes count toward the US target
+    reg2 = regional({"US-CA": 50, "US-TX": 30, "DE": 20}, ["US"])
+    assert reg2["score"] == 80.0
+
+    now = datetime.now(timezone.utc)
+    flat = _series([50] * 90)
+    with_reg = score_keyword("a", flat, {"US": 100}, ["US"], now)
+    no_reg = score_keyword("b", flat, None, ["US"], now)
+    # missing regional data must not tank the composite (weights renormalize)
+    assert with_reg.composite > no_reg.composite
+    assert no_reg.components["regional"]["score"] is None
+    assert no_reg.composite > 0
+
+
+def test_scoring_weights_configurable():
+    from datetime import datetime, timezone
+
+    from trend_scout.scoring import score_keyword
+
+    now = datetime.now(timezone.utc)
+    rising = _series([10 + i for i in range(90)])
+    heavy = score_keyword("x", rising, None, ["US"], now,
+                          {"weights": {"momentum": 1.0, "regional": 0.0, "freshness": 0.0}})
+    assert abs(heavy.composite - heavy.components["momentum"]["score"]) < 0.01
+
+
 if __name__ == "__main__":
     for fn in [v for k, v in list(globals().items()) if k.startswith("test_")]:
         fn()

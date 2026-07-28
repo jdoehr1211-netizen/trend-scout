@@ -29,3 +29,20 @@ target_geos: [US, CA, GB, AU, DE]
 # keyword per region cycle). Doubles the monthly region spend — leave off
 # until the worldwide signal proves useful.
 us_state_breakdown: false
+
+# Scoring engine tuning (formula documented in src/trend_scout/scoring.py).
+# Weights renormalize over available components, so they need not sum to 1
+# exactly — but keep them proportional to how much you trust each signal.
+scoring:
+  weights:
+    momentum: 0.5      # growth of interest (the core signal)
+    regional: 0.3      # share of interest inside target_geos
+    freshness: 0.2     # inverse saturation (how far past peak)
+  momentum_windows: { "7": 0.5, "30": 0.3, "90": 0.2 }
+  momentum_squash: 50.0        # tanh scale in % growth; lower = spikier scores
+  saturation_stale_days: 45.0
+  seasonality_min_days: 400    # below this span, seasonality is flag-only
+  seasonality_ratio: 2.0
+  min_days: 30                 # series shorter than this -> low confidence
+  max_zero_ratio: 0.4          # more zeros than this -> low confidence
+  low_confidence_factor: 0.6   # composite multiplier for low-confidence series
